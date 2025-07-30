@@ -1,0 +1,43 @@
+global class VehicleOrderBatch implements Database.Batchable<sObject> {
+ 
+    global Database.QueryLocator start(Database.BatchableContext bc) {
+        return Database.getQueryLocator([
+            SELECT Id, Status_c, Vehiclec FROM Vehicle_Orderc WHERE Status_c = 'Pending'
+        ]);
+    }
+ 
+    global void execute(Database.BatchableContext bc, List<Vehicle_Order__c> orderList) {
+        Set<Id> vehicleIds = new Set<Id>();
+        for (Vehicle_Order__c order : orderList) {
+            if (order.Vehicle__c != null) {
+                vehicleIds.add(order.Vehicle__c);
+            }
+        }
+ 
+        if (!vehicleIds.isEmpty()) {
+            Map<Id, Vehicle_c> vehicleStockMap = new Map<Id, Vehicle_c>(
+                [SELECT Id, Stock_Quantity_c FROM Vehicle_c WHERE Id IN :vehicleIds]
+            );
+ 
+            List<Vehicle_Order_c> ordersToUpdate = new List<Vehicle_Order_c>();
+            List<Vehicle_c> vehiclesToUpdate = new List<Vehicle_c>();
+ 
+            for (Vehicle_Order__c order : orderList) {
+                Vehicle_c vehicle = vehicleStockMap.get(order.Vehicle_c);
+                if (vehicle != null && vehicle.Stock_Quantity__c > 0) {
+                    order.Status__c = 'Confirmed';
+                    vehicle.Stock_Quantity__c -= 1;
+                    ordersToUpdate.add(order);
+                    vehiclesToUpdate.add(vehicle);
+                }
+            }
+ 
+            if (!ordersToUpdate.isEmpty()) update ordersToUpdate;
+            if (!vehiclesToUpdate.isEmpty()) update vehiclesToUpdate;
+        }
+    }
+ 
+    global void finish(Database.BatchableContext bc) {
+        System.debug('Vehicle order batch job completed.');
+    }
+}
